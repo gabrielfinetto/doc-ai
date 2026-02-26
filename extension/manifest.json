@@ -3,6 +3,7 @@
   "name": "DocIA - Captura Full Page Pro",
   "version": "1.5.1",
   "permissions": [
+    "storage",
     "activeTab",
     "scripting",
     "debugger"
@@ -20,3 +21,4 @@
   "128": "icon-128.png"
 }
 }
+
