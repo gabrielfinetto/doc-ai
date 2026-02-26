@@ -43,11 +43,13 @@ function showMain() {
 }
 
 async function getStoredWebhookUrl() {
+  if (!chrome?.storage?.local) return "";
   const { webhookUrl } = await chrome.storage.local.get("webhookUrl");
   return webhookUrl || "";
 }
 
 async function setStoredWebhookUrl(url) {
+  if (!chrome?.storage?.local) return;
   await chrome.storage.local.set({ webhookUrl: url });
 }
 
