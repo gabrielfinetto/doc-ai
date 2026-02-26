@@ -13,7 +13,7 @@ const els = {
   statusArea: document.getElementById("statusArea"),
 };
 
-// Helpers
+// ---------- Helpers ----------
 function isValidEmail(email) {
   return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
@@ -28,37 +28,45 @@ function isValidUrl(url) {
 }
 
 function setStatus(icon, text) {
-  els.statusIcon.innerText = icon;
-  els.statusText.innerText = text;
+  if (els.statusIcon) els.statusIcon.innerText = icon;
+  if (els.statusText) els.statusText.innerText = text;
 }
 
 function showStatus() {
-  els.mainContent.style.display = "none";
-  els.statusArea.classList.add("active");
+  if (els.mainContent) els.mainContent.style.display = "none";
+  if (els.statusArea) els.statusArea.classList.add("active");
 }
 
 function showMain() {
-  els.mainContent.style.display = "block";
-  els.statusArea.classList.remove("active");
+  if (els.mainContent) els.mainContent.style.display = "block";
+  if (els.statusArea) els.statusArea.classList.remove("active");
 }
 
+// ---------- Storage (hardened) ----------
 async function getStoredWebhookUrl() {
-  if (!chrome?.storage?.local) return "";
-  const { webhookUrl } = await chrome.storage.local.get("webhookUrl");
-  return webhookUrl || "";
+  try {
+    if (!chrome?.storage?.local) return "";
+    const { webhookUrl } = await chrome.storage.local.get("webhookUrl");
+    return webhookUrl || "";
+  } catch {
+    return "";
+  }
 }
 
 async function setStoredWebhookUrl(url) {
-  if (!chrome?.storage?.local) return;
-  await chrome.storage.local.set({ webhookUrl: url });
+  try {
+    if (!chrome?.storage?.local) return;
+    await chrome.storage.local.set({ webhookUrl: url });
+  } catch {
+    // noop
+  }
 }
 
 // Prefill webhook input on load
 (async () => {
-  if (els.webhookUrl) {
-    const saved = await getStoredWebhookUrl();
-    if (saved) els.webhookUrl.value = saved;
-  }
+  if (!els.webhookUrl) return;
+  const saved = await getStoredWebhookUrl();
+  if (saved) els.webhookUrl.value = saved;
 })();
 
 // Save webhook button
@@ -76,95 +84,114 @@ if (els.saveWebhook) {
   });
 }
 
-// Capture flow
-els.btnCapture.addEventListener("click", async () => {
-  const userEmail = (els.userEmail.value || "").trim();
-  const webhookUrl = (await getStoredWebhookUrl()).trim();
+// ---------- Capture flow ----------
+if (els.btnCapture) {
+  els.btnCapture.addEventListener("click", async () => {
+    const userEmail = (els.userEmail?.value || "").trim();
+    const webhookUrl = (await getStoredWebhookUrl()).trim();
 
-  if (!isValidEmail(userEmail)) {
-    alert("⚠️ Insira um e-mail válido.");
-    return;
-  }
-
-  if (!webhookUrl || !isValidUrl(webhookUrl)) {
-    alert("⚠️ Configure e salve a URL do webhook do n8n antes de gerar.");
-    return;
-  }
-
-  // UI state
-  showStatus();
-  setStatus("⚡", "Analisando página...");
-
-  let tab;
-  let debuggerAttached = false;
-
-  try {
-    [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) throw new Error("Não foi possível identificar a aba ativa.");
-
-    // Attach debugger for full page capture
-    await chrome.debugger.attach({ tabId: tab.id }, "1.3");
-    debuggerAttached = true;
-
-    const metrics = await chrome.debugger.sendCommand({ tabId: tab.id }, "Page.getLayoutMetrics");
-    const width = Math.ceil(metrics?.contentSize?.width || 0);
-    const height = Math.ceil(metrics?.contentSize?.height || 0);
-
-    if (!width || !height) throw new Error("Não foi possível obter as dimensões da página.");
-
-    // Override viewport to full page size
-    await chrome.debugger.sendCommand({ tabId: tab.id }, "Emulation.setDeviceMetricsOverride", {
-      width,
-      height,
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
-
-    setStatus("📸", "Capturando imagem...");
-    const screenshot = await chrome.debugger.sendCommand({ tabId: tab.id }, "Page.captureScreenshot", {
-      format: "png",
-      fromSurface: true,
-    });
-
-    if (!screenshot?.data) throw new Error("Falha ao capturar screenshot.");
-
-    // Always clear device metrics override
-    await chrome.debugger.sendCommand({ tabId: tab.id }, "Emulation.clearDeviceMetricsOverride");
-
-    setStatus("🚀", "Enviando para o n8n...");
-
-    // Convert base64 PNG to Blob
-    const blob = await (await fetch(`data:image/png;base64,${screenshot.data}`)).blob();
-
-    // Send multipart form-data: image + email
-    const formData = new FormData();
-    formData.append("image", blob, "screenshot.png");
-    formData.append("email", userEmail);
-
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Erro no n8n (HTTP ${response.status}).`);
+    if (!isValidEmail(userEmail)) {
+      alert("⚠️ Insira um e-mail válido.");
+      return;
     }
 
-    setStatus("✅", "Sucesso! Verifique seu Slack.");
-    setTimeout(() => window.close(), 2500);
-  } catch (err) {
-    console.error(err);
-    setStatus("❌", `Erro: ${err?.message || "desconhecido"}`);
-    setTimeout(() => showMain(), 3500);
-  } finally {
-    // Ensure debugger detaches
+    if (!webhookUrl || !isValidUrl(webhookUrl)) {
+      alert("⚠️ Configure e salve a URL do webhook do n8n antes de gerar.");
+      return;
+    }
+
+    showStatus();
+    setStatus("⚡", "Analisando página...");
+
+    let tab;
+    let debuggerAttached = false;
+
     try {
-      if (tab?.id && debuggerAttached) {
-        await chrome.debugger.detach({ tabId: tab.id });
+      [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error("Não foi possível identificar a aba ativa.");
+
+      const url = tab.url || "";
+
+      // Bloqueios (Chrome não permite capturar/inspecionar essas páginas)
+      const blockedPrefixes = [
+        "chrome://",
+        "chrome-extension://",
+        "edge://",
+        "about:",
+        "file://",
+        "https://chrome.google.com/webstore",
+      ];
+
+      if (blockedPrefixes.some((p) => url.startsWith(p))) {
+        throw new Error(
+          "Abra uma página web comum (https://...) para gerar requisitos. Páginas internas do navegador (chrome://) e algumas URLs (file://, Web Store) não permitem captura."
+        );
       }
-    } catch (e) {
-      // Avoid crashing on detach failure
-      console.warn("Falha ao detach do debugger:", e);
+
+      // Attach debugger for full page capture
+      await chrome.debugger.attach({ tabId: tab.id }, "1.3");
+      debuggerAttached = true;
+
+      const metrics = await chrome.debugger.sendCommand({ tabId: tab.id }, "Page.getLayoutMetrics");
+      const width = Math.ceil(metrics?.contentSize?.width || 0);
+      const height = Math.ceil(metrics?.contentSize?.height || 0);
+
+      if (!width || !height) throw new Error("Não foi possível obter as dimensões da página.");
+
+      // Override viewport to full page size
+      await chrome.debugger.sendCommand({ tabId: tab.id }, "Emulation.setDeviceMetricsOverride", {
+        width,
+        height,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+
+      setStatus("📸", "Capturando imagem...");
+
+      const screenshot = await chrome.debugger.sendCommand({ tabId: tab.id }, "Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true,
+      });
+
+      if (!screenshot?.data) throw new Error("Falha ao capturar screenshot.");
+
+      // Always clear device metrics override
+      await chrome.debugger.sendCommand({ tabId: tab.id }, "Emulation.clearDeviceMetricsOverride");
+
+      setStatus("🚀", "Enviando para o n8n...");
+
+      // Convert base64 PNG to Blob
+      const blob = await (await fetch(`data:image/png;base64,${screenshot.data}`)).blob();
+
+      // Send multipart form-data: image + email
+      const formData = new FormData();
+      formData.append("image", blob, "screenshot.png");
+      formData.append("email", userEmail);
+
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Erro no n8n (HTTP ${response.status}). Verifique se o webhook está correto e ativo.`);
+      }
+
+      setStatus("✅", "Sucesso! Verifique seu Slack.");
+      setTimeout(() => window.close(), 1800);
+    } catch (err) {
+      console.error(err);
+      setStatus("❌", `Erro: ${err?.message || "desconhecido"}`);
+      setTimeout(() => showMain(), 3500);
+    } finally {
+      // Ensure debugger detaches
+      try {
+        if (tab?.id && debuggerAttached) {
+          await chrome.debugger.detach({ tabId: tab.id });
+        }
+      } catch (e) {
+        console.warn("Falha ao detach do debugger:", e);
+      }
     }
-  }
-});
+  });
+}
