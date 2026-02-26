@@ -1,0 +1,230 @@
+{
+  "name": "Documento de Requisitos - DocAI",
+  "nodes": [
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-chat-latest",
+          "mode": "list",
+          "cachedResultName": "gpt-5-chat-latest"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        736,
+        320
+      ],
+      "id": "b237e278-4f52-4001-9aea-fc0945183ada",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "name": "YOUR_OPENAI_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "docia-webhook",
+        "responseMode": "lastNode",
+        "responseData": "allEntries",
+        "options": {
+          "binaryPropertyName": "image"
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        640,
+        112
+      ],
+      "id": "3682f7f2-b3d8-4d36-98a6-0986241425ab",
+      "name": "Recebe Imagem"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# CONTEXTO E PERSONA\nVocê atua como um Analista de Requisitos Sênior e Engenheiro de Software especializado em análise de sistemas. Sua tarefa é realizar a engenharia reversa da imagem anexada (screenshot de interface) e gerar uma Documentação de Requisitos técnica, profissional e pronta para desenvolvimento.\n\n# INSTRUÇÕES DE ANÁLISE\n1. **Identificação de Componentes:** Mapeie todos os elementos visuais (inputs, botões, labels, ícones, menus).\n2. **Inferência de Comportamento:** Com base em padrões de UX/UI, descreva como cada elemento deve se comportar (ex: máscaras de campo, validações de erro, estados de hover).\n3. **Regras de Negócio:** Deduza as regras de negócio necessárias para que esta tela seja funcional e segura.\n\n# ESTRUTURA DA DOCUMENTAÇÃO (SAÍDA)\nSua resposta deve seguir rigorosamente esta estrutura:\n\n## 1. Visão Geral do Módulo\n* **Nome da Funcionalidade:** [Nome sugerido com base na imagem]\n* **Objetivo:** [Breve descrição do valor que essa tela entrega ao usuário]\n* **Atores:** [Quem interage com essa interface]\n\n## 2. Especificação de Requisitos Funcionais (RF)\n* Liste os requisitos em formato atômico (ex: RF001 - O sistema deve permitir...).\n* Inclua validações de campos (obrigatórios, tipos de dados, limites de caracteres).\n\n## 3. Requisitos Não-Funcionais (RNF)\n* Especifique critérios de Usabilidade, Performance e Segurança pertinentes a esta interface.\n\n## 4. Fluxo do Usuário e Comportamento da Interface\n* Descreva a interação passo a passo.\n* **Casos de Exceção:** O que acontece se a rede cair ou o dado for inválido?\n\n## 5. Critérios de Aceitação (Formato Gherkin)\n* Forneça pelo menos 2 cenários principais utilizando a sintaxe: \n    * Dado que [contexto]\n    * Quando [ação do usuário]\n    * Então [resultado esperado]\n\n# DIRETRIZES DE ESTILO\n- Use linguagem técnica, porém clara.\n- Seja objetivo e evite ambiguidades.\n- Se houver algo incerto na imagem, adicione uma seção \"Dúvidas/Premissas\" ao final.",
+        "options": {
+          "passthroughBinaryImages": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        848,
+        112
+      ],
+      "id": "abacfbf9-59bd-45f1-8f73-221a4dfe9188f",
+      "name": "Gera Requisito"
+    },
+    {
+      "parameters": {
+        "url": "https://slack.com/api/users.lookupByEmail",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $('Recebe Imagem').item.json.body.email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1440,
+        112
+      ],
+      "id": "fae6059a-b383-4eb8-bcc3-36e3d2937334",
+      "name": "Identifica usuário no Slack",
+      "credentials": {
+        "slackApi": {
+          "name": "YOUR_SLACK_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "={{ $json.user.id }}",
+          "mode": "id"
+        },
+        "text": "={{ $('Code in JavaScript').item.json.formattedOutput }}",
+        "otherOptions": {
+          "includeLinkToWorkflow": false
+        }
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1696,
+        112
+      ],
+      "id": "bd6f873d-5fec-45c2-b45f-d22eb01c9dc7",
+      "name": "Envia mensagem no slack",
+      "credentials": {
+        "slackApi": {
+          "name": "YOUR_SLACK_CREDENTIAL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## DocIA",
+        "height": 448,
+        "width": 1312
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        592,
+        0
+      ],
+      "id": "cd9da851-9f1e-48f7-a067-aa1a41b3fc48",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## 🎯 Captura Automática de Requisitos por Imagem — n8n + OpenAI (LangChain) + Slack\n\n2. Objetivo e Gatilhos\n\nObjetivo:\nAutomatizar a geração de uma Documentação de Requisitos técnica a partir de uma imagem (screenshot de interface), entregando o resultado diretamente ao usuário no Slack.\n\nGatilhos:\n\n🌐 Webhook (POST) — Recebe Imagem\n\n3. 🔁 Fluxo (overview)\n\nFluxo Único — Captura → Análise → Entrega:\n1️⃣ Receber imagem via webhook com dados do solicitante (imagem + email).\n2️⃣ Analisar interface da imagem usando IA (engenharia reversa de UI/UX).\n3️⃣ Gerar documentação de requisitos estruturada (RF, RNF, Gherkin, UI).\n4️⃣ Identificar usuário no Slack a partir do e-mail informado.\n5️⃣ Enviar documentação gerada como mensagem direta no Slack.\n\n4. 🧠 Regras de Negócio\n\nA imagem recebida é tratada como fonte única de verdade para inferência dos requisitos.\n\nA IA assume o papel de Analista de Requisitos Sênior, seguindo um prompt rígido e estruturado.\n\nO texto final enviado ao Slack é exatamente o campo output gerado pelo agente de IA.\n\nO fluxo depende da correspondência correta entre email informado → usuário Slack válido.\n\nNão há tratamento de erro explícito para:\n\nE-mail inexistente no Slack.\n\nFalha na geração da resposta da IA.\n\nNão há persistência (log, banco ou histórico); o fluxo é stateless.\n\n📍 Modelo de IA Atual:\n\ngpt-5-chat-latest\n\n📍 Endpoint Slack:\n\nusers.lookupByEmail\n\n5. 🔌 Entradas / Saídas\n\nIN (Webhook HTTP POST):\n\nimage → Arquivo binário da imagem (screenshot da interface).\n\nbody.email → E-mail do solicitante (usado para lookup no Slack).\n\nOUT:\n\n📩 Mensagem direta no Slack contendo:\n\nDocumentação de Requisitos completa e formatada (texto longo).\n\n6. 🧷 Variáveis Globais / Constantes\nMODEL_IA = gpt-5-chat-latest\nSLACK_ENDPOINT = users.lookupByEmail\nRESPONSE_MODE = lastNode\nWEBHOOK_PATH = docia-webhook\n",
+        "height": 1440,
+        "width": 576,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "c2286919-aa71-4b37-a5dd-6eba0e6dde59",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Formata o output para Slack com Markdown enriquecido\nconst rawOutput = $input.item.json.output;\n\n// Aplica formatação Slack (mrkdwn)\nconst formattedOutput = rawOutput\n  // Títulos principais\n  .replace(/^## (.*?)$/gm, '*$1*\\n━━━━━━━━━━━━━━━━')\n  // Subtítulos\n  .replace(/^### (.*?)$/gm, '▸ *$1*')\n  // Negrito para labels\n  .replace(/\\*\\*(.*?)\\*\\*/g, '*$1*')\n  // Código inline\n  .replace(/`(.*?)`/g, '`$1`')\n  // Listas com melhor espaçamento\n  .replace(/^\\* /gm, '  • ')\n  .replace(/^- /gm, '  • ');\n\n// Adiciona cabeçalho visual\nconst finalOutput = `\n📋 *DOCUMENTAÇÃO DE REQUISITOS GERADA*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n${formattedOutput}\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n_Gerado automaticamente via DocIA • ${new Date().toLocaleString('pt-BR')}_\n`;\n\nreturn { json: { formattedOutput: finalOutput } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        112
+      ],
+      "id": "168164d6-f1cf-47ad-89d0-fea314788c84",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Gera Requisito",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recebe Imagem": {
+      "main": [
+        [
+          {
+            "node": "Gera Requisito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gera Requisito": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Identifica usuário no Slack": {
+      "main": [
+        [
+          {
+            "node": "Envia mensagem no slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Identifica usuário no Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  }
+}
