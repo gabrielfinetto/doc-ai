@@ -15,7 +15,9 @@ const els = {
 
 // ---------- Helpers ----------
 function isValidEmail(email) {
-  return typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  // Each segment is unambiguous: local-part @ domain-label . tld
+  // Avoids backtracking between adjacent [^\s@]+ groups separated by a literal dot.
+  return typeof email === "string" && /^[^\s@]+@[^\s@.]+\.[^\s@.]+$/.test(email.trim());
 }
 
 function isValidUrl(url) {
@@ -63,11 +65,10 @@ async function setStoredWebhookUrl(url) {
 }
 
 // Prefill webhook input on load
-(async () => {
-  if (!els.webhookUrl) return;
+if (els.webhookUrl) {
   const saved = await getStoredWebhookUrl();
   if (saved) els.webhookUrl.value = saved;
-})();
+}
 
 // Save webhook button
 if (els.saveWebhook) {
